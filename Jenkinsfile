@@ -1,34 +1,32 @@
+// Every jenkins file should start with either a Declarative or Scripted Pipeline entry point.
 node {
-  // Mark the code checkout 'stage'....
-  stage 'Stage Checkout'
+    try {
+        //Call function to send a message to Slack
+        notifyBuild('STARTED')
+        // Global variable declaration
+        def project = 'sa-android'
+        def appName = 'Sample App'
 
-  // Checkout code from repository and update any submodules
-  checkout scm
-  sh 'git submodule update --init'
+        // Stage, is to tell the Jenkins that this is the new process/step that needs to be executed
+        stage('Checkout') {
+            // Pull the code from the repo
+            checkout scm
+        }
 
-  stage 'Stage Build'
+        stage('Build Image') {
+            // Build our docker Image
+            sh("assembleDebug")
+        }
 
-  //branch name from Jenkins environment variables
-  echo "My branch is: ${env.BRANCH_NAME}"
+        stage('Run application test') {
+            sh("test")
+        }
 
-  def flavor = flavor(env.BRANCH_NAME)
-  echo "Building flavor ${flavor}"
-
-  //build your gradle flavor, passes the current build number as a parameter to gradle
-  sh "./gradlew clean assemble${flavor}Debug -PBUILD_NUMBER=${env.BUILD_NUMBER}"
-
-  stage 'Stage Archive'
-  //tell Jenkins to archive the apks
-  archiveArtifacts artifacts: 'app/build/outputs/apk/*.apk', fingerprint: true
-
-  stage 'Stage Upload To Fabric'
-  sh "./gradlew crashlyticsUploadDistribution${flavor}Debug  -PBUILD_NUMBER=${env.BUILD_NUMBER}"
+    } catch (e) {
+        currentBuild.result = "FAILED"
+        throw e
+      } finally {
+        //notifyBuild(currentBuild.result)
+    }
 }
 
-// Pulls the android flavor out of the branch name the branch is prepended with /QA_
-@NonCPS
-def flavor(branchName) {
-  def matcher = (env.BRANCH_NAME =~ /QA_([a-z_]+)/)
-  assert matcher.matches()
-  matcher[0][1]
-}
